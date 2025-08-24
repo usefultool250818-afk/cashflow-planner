@@ -19,6 +19,14 @@ export default function CashflowPlanner() {
   type Member = { id: string; name: string; birthYear: number; baseIncome: number }; // 円
   type OneOff = { id: string; year: number; label: string; amount: number }; // 円（+収入/-支出）
   type Expense = { key: string; label: string; amount: number }; // 円
+  type TableRow = {
+    year: number;
+    ages: string;
+    income: number;
+    expense: number;
+    net: number;
+    savings: number;
+  };
 
   // -------------------- 初期値（SSRと一致） --------------------
   const defaultMembers: Member[] = [
@@ -47,7 +55,6 @@ export default function CashflowPlanner() {
     salaryGrowth: 0.01,
     returnRate: 0.02,
     initialSavings: 2_000_000, // 円
-    takeHomeRate: 0.8,         // ★ 追加：手取り率（0〜1）
   });
 
   // 入力/レポート モード
@@ -99,6 +106,7 @@ export default function CashflowPlanner() {
     }
 
     setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // URLを常に最新化（クライアントのみ）
@@ -130,8 +138,8 @@ export default function CashflowPlanner() {
   }, [oneOffs, hydrated]);
 
   // -------------------- 計算（内部は円のまま） --------------------
-  const table = useMemo(() => {
-    const rows: any[] = [];
+  const table = useMemo<TableRow[]>(() => {
+    const rows: TableRow[] = [];
     let savings = assumptions.initialSavings; // 円
 
     for (let i = 0; i < years; i++) {
@@ -140,9 +148,7 @@ export default function CashflowPlanner() {
 
       const totalIncome = members.reduce((sum, m) => {
         const t = year - startYear;
-        const gross = m.baseIncome * Math.pow(1 + assumptions.salaryGrowth, t);
-        const net   = gross * (assumptions.takeHomeRate ?? 1); // ★ 手取り率を乗算
-        return sum + net;
+        return sum + m.baseIncome * Math.pow(1 + assumptions.salaryGrowth, t);
       }, 0);
 
       const totalFixedOut = expenses.reduce((sum, e) => {
@@ -220,7 +226,6 @@ export default function CashflowPlanner() {
       salaryGrowth: 0.01,
       returnRate: 0.02,
       initialSavings: 2_000_000,
-      takeHomeRate: 0.8,         // ★ 追加：手取り率（0〜1）
     });
     setStartYear(thisYear);
     setYears(20);
@@ -230,12 +235,12 @@ export default function CashflowPlanner() {
   // -------------------- UI --------------------
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
+      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b print:hidden">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl sm:text-2xl font-bold">家計キャッシュフロープランナー</h1>
 
           <div className="flex items-center gap-2">
-            {/* 入力 / レポート 切替（モバイルでも表示） */}
+            {/* 入力 / レポート 切替 */}
             <div className="flex rounded-full border p-1 bg-white">
               <button
                 onClick={() => setViewMode("edit")}
@@ -345,19 +350,6 @@ export default function CashflowPlanner() {
                   })
                 }
                 suffix="/年"
-              />
-              <LabeledInput
-                label="手取り率（収入）"
-                type="number"
-                step={0.01}
-                value={assumptions.takeHomeRate}
-                onChange={(v) =>
-                  setAssumptions({
-                    ...assumptions,
-                    takeHomeRate: clamp01(Number(v)), // 0〜1に丸め
-                  })
-                }
-                suffix="×"
               />
             </div>
           </Card>
@@ -469,7 +461,6 @@ export default function CashflowPlanner() {
                     signed
                     onChange={(yen) => updateOneOff(o.id, { amount: yen })}
                     scale={10_000}
-                    /* suffix は付けない */
                   />
 
                   {/* 単位（万円）を別セルに分離。小画面では次行に出る */}
@@ -526,48 +517,49 @@ export default function CashflowPlanner() {
           <Card title="推移グラフ（収入・支出・貯蓄）">
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={table} margin={{ top: 10, right: 16, bottom: 8, left: 72 }}>
+                <LineChart
+                  data={table}
+                  margin={{ top: 10, right: 16, bottom: 8, left: 72 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="year" />
                   <YAxis
                     width={64}
                     tickMargin={8}
-                    tickFormatter={(v) => `${(v / 10_000).toLocaleString("ja-JP")}万円`}
+                    tickFormatter={(v) =>
+                      `${(v / 10_000).toLocaleString("ja-JP")}万円`
+                    }
                   />
                   <Tooltip
-                    formatter={(val: any) => `${(Number(val) / 10_000).toLocaleString("ja-JP")}万円`}
-                    labelFormatter={(y) => `${y}年`}
+                    formatter={(val: number | string) =>
+                      `${(Number(val) / 10_000).toLocaleString("ja-JP")}万円`
+                    }
+                    labelFormatter={(y: number | string) => `${y}年`}
                   />
                   <Legend wrapperStyle={{ paddingTop: 8 }} />
-
-                  {/* 収入：青・実線 */}
                   <Line
                     type="monotone"
                     dataKey="income"
                     name="収入(A)"
                     dot={false}
-                    stroke="#2563eb"        // blue-600
+                    stroke="#2563eb"
                     strokeWidth={2}
                   />
-
-                  {/* 支出：赤・破線（色覚多様性にも配慮） */}
                   <Line
                     type="monotone"
                     dataKey="expense"
                     name="支出(B)"
                     dot={false}
-                    stroke="#dc2626"        // red-600
+                    stroke="#dc2626"
                     strokeWidth={2}
                     strokeDasharray="6 4"
                   />
-
-                  {/* 貯蓄：緑・太線 */}
                   <Line
                     type="monotone"
                     dataKey="savings"
                     name="貯蓄残高"
                     dot={{ r: 2 }}
-                    stroke="#16a34a"        // green-600
+                    stroke="#16a34a"
                     strokeWidth={3}
                   />
                 </LineChart>
@@ -709,7 +701,7 @@ function LabeledInput({
   className = "",
 }: {
   label: string;
-  value: any;
+  value: string | number;
   onChange: (v: string) => void;
   type?: string;
   step?: number;
@@ -800,7 +792,7 @@ function IntInput({
 }
 
 // -------------------- ユーティリティ --------------------
-function saveJSON(key: string, value: any) {
+function saveJSON<T>(key: string, value: T) {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
   } catch {}
@@ -843,8 +835,4 @@ function cleanSignedInt(raw: string): string {
   s = s.replace(/(?!^)-/g, "");
   s = s.replace(/^(-?)0+(?=\d)/, "$1");
   return s;
-}
-function clamp01(n: number) {
-  if (Number.isNaN(n)) return 0;
-  return Math.max(0, Math.min(1, n));
 }
