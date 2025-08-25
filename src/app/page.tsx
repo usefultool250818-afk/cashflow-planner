@@ -55,6 +55,7 @@ export default function CashflowPlanner() {
     salaryGrowth: 0.01,
     returnRate: 0.02,
     initialSavings: 2_000_000, // 円
+    takeHomeRate: 0.8,         // ★ 追加：手取り率（0〜1）
   });
 
   // 入力/レポート モード
@@ -148,7 +149,9 @@ export default function CashflowPlanner() {
 
       const totalIncome = members.reduce((sum, m) => {
         const t = year - startYear;
-        return sum + m.baseIncome * Math.pow(1 + assumptions.salaryGrowth, t);
+        const gross = m.baseIncome * Math.pow(1 + assumptions.salaryGrowth, t);
+        const net   = gross * (assumptions.takeHomeRate ?? 1); // ★ 手取り率を乗算
+        return sum + net;
       }, 0);
 
       const totalFixedOut = expenses.reduce((sum, e) => {
@@ -226,6 +229,7 @@ export default function CashflowPlanner() {
       salaryGrowth: 0.01,
       returnRate: 0.02,
       initialSavings: 2_000_000,
+      takeHomeRate: 0.8, 
     });
     setStartYear(thisYear);
     setYears(20);
@@ -351,7 +355,21 @@ export default function CashflowPlanner() {
                 }
                 suffix="/年"
               />
+              <LabeledInput
+                label="手取り率（収入）"
+                type="number"
+                step={0.01}
+                value={assumptions.takeHomeRate}
+                onChange={(v) =>
+                  setAssumptions({
+                    ...assumptions,
+                    takeHomeRate: clamp01(Number(v)), // 0〜1に丸め
+                  })
+                }
+                suffix="×"
+              />
             </div>
+        
           </Card>
 
           <Card title="世帯メンバー">
@@ -835,4 +853,8 @@ function cleanSignedInt(raw: string): string {
   s = s.replace(/(?!^)-/g, "");
   s = s.replace(/^(-?)0+(?=\d)/, "$1");
   return s;
+}
+function clamp01(n: number) {
+  if (Number.isNaN(n)) return 0;
+  return Math.max(0, Math.min(1, n));
 }
